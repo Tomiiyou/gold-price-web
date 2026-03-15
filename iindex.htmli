@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>实时金价行情</title>
+    <!-- 引入 Tailwind CSS 用于快速排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Lucide 图标库 -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* 隐藏滚动条，保持界面清爽 */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+        body {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+            background-color: #f3f4f6;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        /* 表头渐变色，还原原网站质感 */
+        .bg-header-gradient {
+            background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%);
+        }
+    </style>
+</head>
+<body class="text-gray-800 antialiased">
+
+    <!-- 主容器：限制最大宽度，使其在电脑上看起来像手机，在手机上完美全屏 -->
+    <div class="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative flex flex-col">
+        
+        <!-- 顶部导航条 -->
+        <header class="bg-header-gradient text-white p-4 sticky top-0 z-10 shadow-md">
+            <div class="flex justify-between items-center">
+                <h1 class="text-xl font-bold tracking-wider">最新黄金行情</h1>
+                <button id="refreshBtn" onclick="fetchData()" class="flex items-center space-x-1 bg-white/20 px-3 py-1.5 rounded-full active:bg-white/40 transition">
+                    <i data-lucide="refresh-cw" class="w-4 h-4 text-white" id="refreshIcon"></i>
+                    <span class="text-sm">刷新</span>
+                </button>
+            </div>
+            <div class="text-xs text-blue-100 mt-2 flex justify-between">
+                <span id="updateStatus">正在获取实时数据...</span>
+                <span id="lastUpdateTime">--:--:--</span>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="flex-1 p-3 space-y-5 pb-20">
+            
+            <!-- 表格 1：贵金属行情 -->
+            <section class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="bg-blue-50/50 border-b border-gray-100 p-3 flex items-center space-x-2">
+                    <div class="w-1 h-4 bg-blue-800 rounded-full"></div>
+                    <h2 class="text-base font-bold text-gray-800">贵金属行情</h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-center">
+                        <thead class="text-gray-500 bg-gray-50/50 text-xs">
+                            <tr>
+                                <th class="py-3 font-medium">商品</th>
+                                <th class="py-3 font-medium text-red-600">回购</th>
+                                <th class="py-3 font-medium text-green-600">销售</th>
+                                <th class="py-3 font-medium">时间</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-metals" class="divide-y divide-gray-100">
+                            <!-- 数据将通过 JS 渲染在这里 -->
+                            <tr><td colspan="4" class="py-8 text-gray-400">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 表格 2：饰品回购价 -->
+            <section class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="bg-blue-50/50 border-b border-gray-100 p-3 flex items-center space-x-2">
+                    <div class="w-1 h-4 bg-blue-500 rounded-full"></div>
+                    <h2 class="text-base font-bold text-gray-800">饰品回购价</h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-center">
+                        <thead class="text-gray-500 bg-gray-50/50 text-xs">
+                            <tr>
+                                <th class="py-3 font-medium">商品</th>
+                                <th class="py-3 font-medium text-red-600">回购</th>
+                                <th class="py-3 font-medium">时间</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-jewelry" class="divide-y divide-gray-100">
+                            <!-- 数据将通过 JS 渲染在这里 -->
+                            <tr><td colspan="3" class="py-8 text-gray-400">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- 底部信息 -->
+        <footer class="text-center p-4 text-xs text-gray-400 border-t border-gray-100 bg-gray-50 mt-auto">
+            <p>行情数据来源于 beijingrtj.com</p>
+            <p class="mt-1">价格仅供参考，以实际交易为准</p>
+        </footer>
+    </div>
+
+    <script>
+        // 初始化图标
+        lucide.createIcons();
+
+        // 渲染表格的通用函数
+        function renderTable(tbodyId, data, columns) {
+            const tbody = document.getElementById(tbodyId);
+            tbody.innerHTML = ''; // 清空加载提示
+            
+            data.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                // 奇数行加一点非常微弱的背景色，提升阅读体验
+                if(index % 2 !== 0) tr.className = "bg-gray-50/30"; 
+                
+                let html = `<td class="py-3.5 font-medium text-gray-800">${row.name}</td>`;
+                html += `<td class="py-3.5 font-bold text-red-600">${row.buy}</td>`;
+                
+                if (columns === 4) {
+                    html += `<td class="py-3.5 font-bold text-green-600">${row.sell}</td>`;
+                }
+                
+                html += `<td class="py-3.5 text-gray-500 text-xs">${row.time}</td>`;
+                
+                tr.innerHTML = html;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 核心抓取逻辑
+        async function fetchData() {
+            const refreshIcon = document.getElementById('refreshIcon');
+            const statusText = document.getElementById('updateStatus');
+            const timeText = document.getElementById('lastUpdateTime');
+            
+            // 开启旋转动画
+            refreshIcon.classList.add('animate-spin');
+            statusText.textContent = "正在同步最新价格...";
+            statusText.className = "text-xs text-blue-200 animate-pulse";
+
+            try {
+                // 升级为 Vercel 专属云函数接口，稳定、极速且防封禁
+                const proxyUrl = `/api/proxy`;
+                
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error('网络请求失败');
+                
+                // 直接获取云函数返回的 HTML
+                const htmlString = await response.text();
+                
+                // 简单校验抓取到的内容是否包含目标关键字
+                if (!htmlString || !htmlString.includes('黄金')) {
+                    throw new Error('获取到的数据无效');
+                }
+                
+                // 将字符串解析为 DOM 对象以便提取
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlString, 'text/html');
+                
+                /* * -------------------------------------------------------------
+                 * 这里是解析目标网站 HTML 的逻辑。
+                 * 由于无法确定目标网站当前的真实 DOM 结构，如果抓取失败，将自动降级使用备用数据。
+                 * -------------------------------------------------------------
+                 */
+                let parsedMetals = [];
+                let parsedJewelry = [];
+                
+                // 尝试用简单的启发式规则寻找包含“黄金”的表格行
+                const rows = doc.querySelectorAll('tr');
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('td');
+                    if(cells.length >= 3) {
+                        const name = cells[0].innerText.trim();
+                        // 简单判断归属
+                        if(['黄金', '白银', '铂金', '钯金', '港金'].includes(name) && cells.length >= 4) {
+                            parsedMetals.push({
+                                name: name,
+                                buy: cells[1].innerText.trim(),
+                                sell: cells[2].innerText.trim(),
+                                time: cells[3].innerText.trim() || new Date().toLocaleTimeString('zh-CN', {hour12: false})
+                            });
+                        } else if(['千足金', '18K (黄金)', 'Pt950', 'Pd990', 'Ag925'].includes(name)) {
+                            parsedJewelry.push({
+                                name: name,
+                                buy: cells[1].innerText.trim(),
+                                time: cells[2].innerText.trim() || new Date().toLocaleTimeString('zh-CN', {hour12: false})
+                            });
+                        }
+                    }
+                });
+
+                // 如果成功解析出数据，则渲染解析的数据；否则抛出异常走备用数据
+                if(parsedMetals.length > 0 && parsedJewelry.length > 0) {
+                    renderTable('table-metals', parsedMetals, 4);
+                    renderTable('table-jewelry', parsedJewelry, 3);
+                    statusText.textContent = "实时数据已更新";
+                    statusText.className = "text-xs text-green-200";
+                } else {
+                    throw new Error("未能从网页结构中解析到有效数据");
+                }
+
+            } catch (error) {
+                console.warn("实时抓取失败：", error);
+                
+                // 修复：彻底移除备用数据。抓取失败时直接显示错误提示，绝不显示旧价格误导客户。
+                document.getElementById('table-metals').innerHTML = '<tr><td colspan="4" class="py-8 text-red-500 font-bold text-center">价格加载失败，请刷新重试</td></tr>';
+                document.getElementById('table-jewelry').innerHTML = '<tr><td colspan="3" class="py-8 text-red-500 font-bold text-center">价格加载失败，请刷新重试</td></tr>';
+
+                statusText.textContent = "获取实时数据失败";
+                statusText.className = "text-xs text-red-300";
+            } finally {
+                // 停止动画，更新时间
+                setTimeout(() => {
+                    refreshIcon.classList.remove('animate-spin');
+                    statusText.classList.remove('animate-pulse');
+                }, 500);
+                
+                timeText.textContent = new Date().toLocaleTimeString('zh-CN', {hour12: false});
+            }
+        }
+
+        // 页面加载完成后自动获取一次数据
+        document.addEventListener('DOMContentLoaded', fetchData);
+        
+        // 每 60 秒自动刷新一次数据
+        setInterval(fetchData, 60000);
+
+    </script>
+</body>
+</html>
